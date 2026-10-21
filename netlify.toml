@@ -1,0 +1,4 @@
+# Work Space website: static page in /public plus one function that reads the Telegram channel.
+[build]
+  publish = "public"
+  functions = "netlify/functions"
