@@ -614,12 +614,29 @@ input:focus,textarea:focus,button:focus-visible,a:focus-visible{outline:2px soli
     <p style="margin: 0; font-size: 18px; line-height: 1.5; color: var(--soft)">{{t.pr.sub}}</p>
   </div>
 
+  <!-- halloween promo banner -->
+  <sc-if value="{{promoOn}}" hint-placeholder-val="{{ true }}">
+    <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 18px 22px; border-radius: 22px; border: 1.5px solid #E85002; background: rgba(232, 80, 2, 0.12)">
+      <span style="font-size: 34px; line-height: 1" aria-hidden="true">🎃</span>
+      <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 240px">
+        <strong style="font-size: clamp(18px, 2vw, 22px); font-weight: 800; letter-spacing: -0.01em">{{t.pr.promo_title}}</strong>
+        <span style="font-size: 15px; color: var(--soft)">{{t.pr.promo_sub}}</span>
+      </div>
+    </div>
+  </sc-if>
+
   <!-- packages -->
   <div style="display: flex; flex-wrap: wrap; gap: 16px">
     <sc-for list="{{pkgs}}" as="p" hint-placeholder-count="4">
       <article class="{{p.cls}}" style="{{p.cardStyle}}">
-        <h3 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em">{{p.name}}</h3>
-        <div style="font-size: 52px; font-weight: 800; letter-spacing: -0.04em; line-height: 1">{{p.price}}</div>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+          <h3 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em">{{p.name}}</h3>
+          <sc-if value="{{p.hasPromo}}" hint-placeholder-val="{{ true }}"><span style="{{p.badgeStyle}}">{{p.promoBadge}}</span></sc-if>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap">
+          <div style="font-size: 52px; font-weight: 800; letter-spacing: -0.04em; line-height: 1">{{p.price}}</div>
+          <sc-if value="{{p.hasPromo}}" hint-placeholder-val="{{ true }}"><s style="font-size: 22px; font-weight: 600; opacity: 0.55">{{p.oldPrice}}</s></sc-if>
+        </div>
         <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; flex-grow: 1">
           <sc-for list="{{p.items}}" as="it" hint-placeholder-count="3">
             <li style="display: flex; gap: 10px; align-items: flex-start; font-size: 16px; line-height: 1.4">
@@ -2204,6 +2221,7 @@ void main() {
           less: 'Убрать', more: 'Добавить',
           better: (n, p, d) => 'Пакет «' + n + '» за ' + p + '$ включает всё это и даже больше — выгоднее на ' + d + '$',
           order_hello: 'Здравствуйте! Хочу заказать размещение в Work Space:', order_total: 'Итого',
+          promo_title: 'Хеллоуин: скидки на все пакеты до −50%', promo_sub: 'Акция действует с 27 октября по 8 ноября', promo_tag: 'Акция',
           pkgs: [
             { name: 'Старт', price: '60$', items: ['5 публикаций', '1 закреп на 12 часов'] },
             { name: 'Бизнес', price: '155$', items: ['10 публикаций', '2 закрепа по 24 часа', 'Бонус: 2 сторис с вакансией в канале'] },
@@ -2255,6 +2273,7 @@ void main() {
           less: 'Прибрати', more: 'Додати',
           better: (n, p, d) => 'Пакет «' + n + '» за ' + p + '$ містить усе це й навіть більше — вигідніше на ' + d + '$',
           order_hello: 'Вітаю! Хочу замовити розміщення в Work Space:', order_total: 'Разом',
+          promo_title: 'Хелловін: знижки на всі пакети до −50%', promo_sub: 'Акція діє з 27 жовтня по 8 листопада', promo_tag: 'Акція',
           pkgs: [
             { name: 'Старт', price: '60$', items: ['5 публікацій', '1 закріп на 12 годин'] },
             { name: 'Бізнес', price: '155$', items: ['10 публікацій', '2 закріпи по 24 години', 'Бонус: 2 сторіс з вакансією в каналі'] },
@@ -2352,6 +2371,11 @@ void main() {
         incStyle: stepBase + (v >= MAXQ[k] ? 'opacity: 0.35; cursor: default;' : 'border-color: #E85002;')
       };
     });
+    // Halloween promo: active 27.10 – 8.11 (Kyiv time), hides itself afterwards
+    const PROMO_FROM = Date.parse('2026-10-27T00:00:00+02:00'), PROMO_TO = Date.parse('2026-11-09T00:00:00+02:00');
+    const promoOn = Date.now() >= PROMO_FROM && Date.now() < PROMO_TO;
+    const PROMO_OFF = [20, 30, 40, 50];
+    const promoPrice = (base, i) => promoOn ? Math.round(base * (100 - PROMO_OFF[i]) / 100) : base;
     const PKG = [
       { pubs: 5, p12: 1, p24: 0, p48: 0, stories: 0, ads: 0, price: 60 },
       { pubs: 10, p12: 0, p24: 2, p48: 0, stories: 2, ads: 0, price: 155 },
@@ -2362,7 +2386,7 @@ void main() {
     if (hasItems) {
       PKG.forEach((pk, i) => {
         const covers = Object.keys(cfg).every((k) => pk[k] >= cfg[k]);
-        if (covers && pk.price < total && (!better || pk.price < better.price)) better = { name: t.pr.pkgs[i].name, price: pk.price };
+        if (covers && promoPrice(pk.price, i) < total && (!better || promoPrice(pk.price, i) < better.price)) better = { name: t.pr.pkgs[i].name, price: promoPrice(pk.price, i) };
       });
     }
     const orderLines = consRows.filter((r) => r.value > 0).map((r) => '• ' + r.label + ': ' + r.value);
@@ -2383,7 +2407,9 @@ void main() {
     const pkgs = t.pr.pkgs.map((p, i) => {
       const accent = i === 1;
       return {
-        name: p.name, price: p.price,
+        name: p.name, price: promoOn ? promoPrice(parseInt(p.price, 10), i) + '$' : p.price,
+        oldPrice: p.price, hasPromo: promoOn, promoBadge: '−' + PROMO_OFF[i] + '%',
+        badgeStyle: 'display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 999px; font-size: 14px; font-weight: 700; ' + (accent ? 'background: #000000; color: #F9F9F9;' : 'background: #E85002; color: #000000;'),
         items: p.items.map((x) => ({ text: x })),
         cls: accent ? 'ws-frost ws-frost-accent' : 'ws-frost',
         cardStyle: cardBase + (accent ? 'color: #000000;' : 'color: var(--text);'),
@@ -2391,7 +2417,7 @@ void main() {
       };
     });
     return {
-      t, langs, countries, dirs, hot, jobs, pkgs, updatedText,
+      t, langs, countries, dirs, hot, jobs, pkgs, updatedText, promoOn,
       consRows, consSubtotal: subtotal + '$', consHasDiscount: discount > 0, consDiscount: '−' + discount + '$',
       consDiscountLabel: t.pr.discount + ' ' + Math.round(rate * 100) + '%', consTotal: total + '$',
       consHasItems: hasItems, consNoItems: !hasItems, consCopied: this.state.copied && hasItems,
