@@ -31,6 +31,12 @@ const DIRECTIONS = [
 
 const PLATFORMS = [['Facebook', /facebook|\bfb\b/i], ['TikTok', /tik\s*tok/i], ['Google', /google|\buac\b/i], ['X', /\btwitter\b|\bx\s*\(twitter\)|\bx ads\b/i], ['Snapchat', /snapchat/i], ['In-app', /in-?app/i], ['ASO', /\baso\b/i], ['SEO', /\bseo\b/i]];
 
+// Posts that are not vacancies: announcements, events, giveaways, digests.
+const NOT_VACANCY = /конференц|conference|ефір|эфир|вебінар|вебинар|подкаст|podcast|розіграш|розыгрыш|giveaway|meetup|мітап|митап|стрім|стрим|івент|ивент|\bevent\b|квитк|билет|промокод|дайджест|digest|анонс/i;
+const ROLE = /manager|buyer|developer|designer|lead|head|specialist|engineer|analyst|recruiter|marketer|editor|tester|farmer|owner|assistant|support|operator|менеджер|баер|байер|разработ|розробн|дизайнер|специалист|спеціаліст|аналитик|аналітик|рекрутер|фармер|тимлид|тімлід|ассистент|асистент|оператор|копирайтер|копірайтер|smm|seo|devops|qa/i;
+const plain = (l) => l.replace(/@[A-Za-z0-9_]{4,}/g, '').replace(/#[\p{L}\p{N}_]+/gu, '').replace(/https?:\/\/\S+/g, '').replace(/[\p{Extended_Pictographic}☀-➿️‍]/gu, '').replace(/^[\s\-–—•*·:|]+|[\s\-–—•*·:|]+$/g, '').trim();
+const CONTACT_LINE = /^(пиш|писать|писати|контакт|связь|зв'язок|звʼязок|cv|резюме|apply|откликн|відгукн|надсила|отправля|telegram|тг|tg)\b/i;
+
 const ACRONYMS = new Set(['VIP', 'FX', 'IT', 'HR', 'SEO', 'SMM', 'PPC', 'UAC', 'CPA', 'TL', 'PM', 'QA', 'UI', 'UX', 'ASO', 'CEO', 'CTO', 'CMO', 'BDM', 'PWA', 'USDT', 'FB', 'AM', 'SMS', 'API', 'SQL', 'CRM', 'B2B', 'B2C', 'KPI', 'GEO', 'iOS']);
 
 function decode(s) {
@@ -66,7 +72,9 @@ function smartCase(title) {
 }
 
 function cleanTitle(line, vertical) {
-  let t = line.replace(/#[\p{L}\p{N}_]+/gu, '').replace(/[\p{Extended_Pictographic}☀-➿️‍]/gu, '').replace(/^[\s\-–—•*·:|]+|[\s\-–—•*·:|]+$/g, '');
+  let t = line.replace(/@[A-Za-z0-9_]{4,}/g, '').replace(/#[\p{L}\p{N}_]+/gu, '').replace(/[\p{Extended_Pictographic}☀-➿️‍]/gu, '').replace(/^[\s\-–—•*·:|]+|[\s\-–—•*·:|]+$/g, '');
+  t = t.replace(/^(ищем|ищу|ищет|шукаємо|шукаю|шукає|требуется|требуются|потрібен|потрібна|потрібні|нужен|нужна|нужны|looking for|hiring|we are hiring|в поиске|у пошуку|вакансия|вакансія)[\s:!—–-]+/i, '')
+    .replace(/\s+(в|у|до|in|for|into)\s+(нашу\s+|нашій\s+|our\s+)?(команд[уыі]|team|компани[юи]|компанію|компанії).*$/i, '');
   let parts = t.split('|').map((p) => p.trim()).filter(Boolean);
   // drop parts that only name a vertical (it is shown as its own label)
   if (parts.length > 1) parts = parts.filter((p, i) => i === 0 || p.replace(VERTICAL_WORDS, '').replace(/[\s\/&,()+-]/g, '') !== '');
@@ -115,10 +123,16 @@ function parse(html) {
     const text = htmlToText(txtm[1]);
     const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
     const tags = (text.match(/#[\p{L}\p{N}_]+/gu) || []).map((h) => h.slice(1).toLowerCase());
-    const headLine = lines.find((l) => l.replace(/#[\p{L}\p{N}_]+/gu, '').replace(/[\p{Extended_Pictographic}\s️|•*-]/gu, '').length > 2) || '';
-    const roleRe = /manager|buyer|developer|designer|lead|head|specialist|engineer|analyst|recruiter|marketer|editor|tester|farmer|owner|assistant|support|operator|менеджер|баер|байер|разработ|розробн|дизайнер|специалист|спеціаліст|аналитик|рекрутер|фармер|тимлид|тімлід|ассистент|асистент|оператор|копирайтер|smm|seo|devops|qa/i;
+    // head line = first of the opening lines that names a role (skips lines that are only a @handle, hashtags or emoji)
+    const cand = lines.map((l, i) => ({ l, i, p: plain(l) })).filter((x) => x.p.replace(/[^\p{L}\p{N}]/gu, '').length > 2);
+    const head = cand.slice(0, 5).find((x) => ROLE.test(x.p)) || cand[0] || { l: '', i: -1, p: '' };
+    const headLine = head.l;
     const isAd = tags.some((t) => /^(реклама|ad|ads|promo|партнерский|партнерськ)/.test(t));
-    if (isAd || !roleRe.test(headLine + ' ' + tags.join(' '))) continue;
+    const opening = lines.slice(0, 3).join(' ') + ' ' + tags.join(' ');
+    if (isAd || NOT_VACANCY.test(opening) || !ROLE.test(head.p + ' ' + tags.join(' '))) continue;
+    // first line of the description: the next meaningful line after the head line (not a contact or hashtag line)
+    const dl = cand.find((x) => x.i > head.i && x.p.replace(/[^\p{L}]/gu, '').length >= 20 && !CONTACT_LINE.test(x.p) && !/[$%€]|usd|usdt|грн/i.test(x.p));
+    const desc = dl ? (dl.p.length > 90 ? dl.p.slice(0, 89).replace(/\s+\S*$/, '') + '…' : dl.p) : null;
     const headSrc = headLine + ' ' + tags.join(' ');
     let found = VERTICALS.filter(([, re]) => re.test(headSrc)).sort((a, b) => headSrc.search(a[1]) - headSrc.search(b[1])).map(([n]) => n);
     if (found.includes('Crypto / FX')) found = found.filter((n) => n !== 'Crypto' && n !== 'FX');
@@ -136,7 +150,8 @@ function parse(html) {
     items.push({
       id: +idm[2],
       post: 'https://t.me/' + idm[1] + '/' + idm[2],
-      title: cleanTitle(headLine, vertical) || 'Вакансия',
+      title: (() => { const c = cleanTitle(headLine, vertical); return c.replace(/[^\p{L}]/gu, '').length >= 3 ? c : 'Вакансия'; })(),
+      desc,
       vertical,
       dir,
       country: fmt.pl ? 'pl' : fmt.ua && !fmt.remote ? 'ua' : 'remote',
